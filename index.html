@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ARH999指数分析工具（V13 指数拟合版）</title>
+    <title>索罗斯指数分析工具（V13 专业版）</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
@@ -58,20 +58,124 @@
                     box-shadow: 0 0 0 0 rgba(22, 93, 255, 0);
                 }
             }
+            .shake {
+                animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+            }
+            @keyframes shake {
+                10%, 90% { transform: translate3d(-1px, 0, 0); }
+                20%, 80% { transform: translate3d(2px, 0, 0); }
+                30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+                40%, 60% { transform: translate3d(4px, 0, 0); }
+            }
+            /* 管理员模式样式 */
+            .admin-panel {
+                background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                color: #e2e8f0;
+            }
         }
     </style>
 </head>
-<body class="font-inter bg-gray-50 text-dark">
+<body class="font-inter bg-gray-50 text-dark overflow-hidden"> <!-- 初始禁止滚动 -->
+
+    <!-- ================= 激活码遮罩层 ================= -->
+    <div id="activationOverlay" class="fixed inset-0 z-[100] bg-gray-900 flex items-center justify-center transition-all duration-700">
+        <!-- 背景装饰 -->
+        <div class="absolute inset-0 overflow-hidden opacity-20 pointer-events-none">
+            <div class="absolute top-0 left-0 w-96 h-96 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob"></div>
+            <div class="absolute top-0 right-0 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob animation-delay-2000"></div>
+            <div class="absolute -bottom-32 left-20 w-96 h-96 bg-pink-500 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob animation-delay-4000"></div>
+        </div>
+
+        <!-- 普通用户激活界面 -->
+        <div id="userActivationPanel" class="bg-white/95 backdrop-blur-sm p-8 rounded-2xl shadow-2xl max-w-md w-full mx-4 text-center relative z-10 border border-white/20">
+            <div class="mb-8">
+                <div class="w-20 h-20 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg transform rotate-3 hover:rotate-6 transition-transform">
+                    <i class="fa fa-shield text-4xl text-white"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-gray-800 mb-3">产品激活</h2>
+                <p class="text-gray-500 text-sm">系统将绑定当前设备<br>更换浏览器或设备需重新激活</p>
+            </div>
+            
+            <div class="space-y-5">
+                <div class="relative">
+                    <i class="fa fa-key absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="activationCodeInput" placeholder="请输入激活码 (格式: XXXX-XXXX-XXXX)" 
+                        class="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-lg tracking-widest uppercase font-mono text-gray-800"
+                        autocomplete="off">
+                </div>
+                
+                <div id="deviceInfo" class="text-xs text-gray-400 bg-gray-100 p-2 rounded-lg flex items-center justify-center">
+                    <i class="fa fa-desktop mr-2"></i>
+                    <span id="fingerprintStatus">正在计算设备指纹...</span>
+                </div>
+
+                <p id="activationError" class="text-red-500 text-sm font-medium hidden flex items-center justify-center animate-bounce">
+                    <i class="fa fa-times-circle mr-1"></i> 激活码无效或设备不匹配
+                </p>
+                
+                <button id="activateBtn" class="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all font-bold text-lg shadow-lg shadow-blue-500/30 transform hover:-translate-y-0.5" disabled>
+                    正在初始化安全组件...
+                </button>
+                
+                <!-- 管理员提示已隐藏，但功能保留 -->
+                <div class="pt-4 border-t border-gray-100 hidden">
+                    <p class="text-xs text-gray-400">
+                        <!-- 管理员指令隐藏 -->
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 管理员后台界面 (默认隐藏) -->
+        <div id="adminPanel" class="hidden admin-panel p-8 rounded-2xl shadow-2xl max-w-lg w-full mx-4 text-center relative z-20 border border-gray-700">
+            <div class="flex justify-between items-center mb-6 pb-4 border-b border-gray-700">
+                <h2 class="text-2xl font-bold text-white flex items-center">
+                    <i class="fa fa-cogs mr-2 text-accent"></i> 激活码生成后台
+                </h2>
+                <button id="closeAdminBtn" class="text-gray-400 hover:text-white transition-colors">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <div class="space-y-6">
+                <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700 text-left">
+                    <p class="text-sm text-gray-400 mb-2">当前密钥 (Secret Key):</p>
+                    <code class="text-xs bg-black/30 p-2 rounded block break-all text-green-400 font-mono" id="currentSecretDisplay"></code>
+                    <p class="text-xs text-gray-500 mt-2">* 所有的验证都依赖此密钥，请勿泄露</p>
+                </div>
+
+                <div class="flex space-x-4">
+                    <input type="number" id="genCount" value="5" min="1" max="50" class="w-24 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-accent text-center" placeholder="数量">
+                    <button id="generateBtn" class="flex-1 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors font-bold shadow-lg shadow-accent/20">
+                        <i class="fa fa-magic mr-2"></i> 生成激活码
+                    </button>
+                </div>
+
+                <div class="relative">
+                    <textarea id="generatedCodesArea" rows="6" readonly class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl text-green-400 font-mono text-sm focus:outline-none resize-none" placeholder="生成的激活码将显示在这里..."></textarea>
+                    <button id="copyCodesBtn" class="absolute top-2 right-2 px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-white transition-colors">
+                        复制
+                    </button>
+                </div>
+                
+                <p class="text-xs text-gray-500">
+                    * 复制这些激活码发送给用户，他们即可在首页解锁。
+                </p>
+            </div>
+        </div>
+    </div>
+    <!-- ================= 激活码遮罩层结束 ================= -->
+
     <!-- 导航栏 -->
-    <nav class="bg-white shadow-sm sticky top-0 z-50 transition-custom">
+    <nav class="bg-white shadow-sm sticky top-0 z-40 transition-custom">
         <div class="container mx-auto px-4 py-4 flex justify-between items-center">
             <div class="flex items-center space-x-2">
                 <i class="fa fa-line-chart text-primary text-2xl"></i>
-                <h1 class="text-xl font-bold text-primary">ARH999指数分析工具（V13）</h1>
+                <h1 class="text-xl font-bold text-primary">索罗斯指数分析工具（V13）</h1>
             </div>
             <div class="hidden md:flex items-center space-x-6">
                 <a href="#" class="text-neutral hover:text-primary transition-custom">首页</a>
-                <a href="#about" class="text-neutral hover:text-primary transition-custom">关于指数</a>
+                <a href="#about" class="text-neutral hover:text-primary transition-custom">使用说明</a>
                 <a href="#data" class="text-neutral hover:text-primary transition-custom">数据</a>
                 <button id="themeToggle" class="p-2 rounded-full hover:bg-light transition-custom">
                     <i class="fa fa-moon-o text-neutral"></i>
@@ -87,9 +191,9 @@
     <main class="container mx-auto px-4 py-8">
         <!-- 介绍部分 -->
         <section class="mb-12 text-center">
-            <h2 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold mb-4">ARH999指数分析与可视化</h2>
+            <h2 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold mb-4">索罗斯指数分析与可视化</h2>
             <p class="text-neutral max-w-3xl mx-auto">
-                V13版本 | 采用指数拟合模型（Y = a×e^(b×X)），基于历史价格数据计算ARH999指数，包含波普尔指标X及其状态显示。
+                V13版本 | 采用专业AI算法模型，计算索罗斯指数，包含波普尔指标X及其状态显示。
             </p>
         </section>
 
@@ -121,10 +225,6 @@
                             <span class="text-neutral">最新指数值:</span>
                             <span id="latestIndexValue" class="font-medium ml-1">--</span>
                         </div>
-                        <div>
-                            <span class="text-neutral">指数拟合系数:</span>
-                            <span id="exponentialCoefficient" class="font-medium ml-1">--</span>
-                        </div>
                     </div>
                 </div>
                 
@@ -135,7 +235,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div id="arh999Status" class="px-4 py-3 bg-gray-100 rounded-lg text-center">
                             <span class="inline-block px-3 py-1 text-sm rounded-full bg-gray-200 text-gray-800">
-                                ARH999状态：等待数据加载
+                                索罗斯指数状态：等待数据加载
                             </span>
                         </div>
                         <div id="popperStatus" class="px-4 py-3 bg-gray-100 rounded-lg text-center">
@@ -155,14 +255,14 @@
                 <div class="flex items-end justify-between">
                     <div>
                         <p id="popperIndexX" class="text-2xl font-bold">--</p>
-                        <p class="text-xs text-purple-500 mt-1">ARH999指数 / 增长速率</p>
+                        <p class="text-xs text-purple-500 mt-1">索罗斯指数 / 增长速率</p>
                     </div>
                     <i class="fa fa-balance-scale text-purple-500 text-2xl"></i>
                 </div>
             </div>
             
             <div class="bg-white rounded-xl p-5 card-shadow border-l-4 border-blue-500">
-                <h4 class="text-sm font-medium text-neutral mb-1">平均拟合增长率</h4>
+                <h4 class="text-sm font-medium text-neutral mb-1">平均增长速率</h4>
                 <div class="flex items-end justify-between">
                     <div>
                         <p id="averageGrowthRate" class="text-2xl font-bold">--</p>
@@ -240,16 +340,8 @@
                                     <span>历史价格</span>
                                 </label>
                                 <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-light transition-custom cursor-pointer">
-                                    <input type="checkbox" id="showEstimate" checked class="mr-2">
-                                    <span>指数拟合估值</span>
-                                </label>
-                                <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-light transition-custom cursor-pointer">
-                                    <input type="checkbox" id="showMA" checked class="mr-2">
-                                    <span>平均价</span>
-                                </label>
-                                <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-light transition-custom cursor-pointer">
                                     <input type="checkbox" id="showIndex" checked class="mr-2">
-                                    <span>ARH999指数</span>
+                                    <span>索罗斯指数</span>
                                 </label>
                             </div>
                         </div>
@@ -327,7 +419,7 @@
         <!-- 图表展示区 -->
         <section class="bg-white rounded-xl p-6 mb-8 card-shadow">
             <h3 class="text-lg font-semibold mb-6 flex items-center">
-                <i class="fa fa-area-chart text-primary mr-2"></i>价格与ARH999指数走势（指数拟合）
+                <i class="fa fa-area-chart text-primary mr-2"></i>价格与索罗斯指数走势
             </h3>
             <div class="h-[500px] relative">
                 <canvas id="mainChart"></canvas>
@@ -357,12 +449,9 @@
                         <tr>
                             <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">日期</th>
                             <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">价格</th>
-                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">指数拟合估值</th>
-                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">平均价</th>
-                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">ARH999指数</th>
-                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">拟合增长率</th>
+                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">索罗斯指数</th>
                             <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">波普尔指标X</th>
-                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">ARH999状态</th>
+                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">索罗斯指数状态</th>
                             <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral uppercase tracking-wider">波普尔状态</th>
                         </tr>
                     </thead>
@@ -385,40 +474,46 @@
             </div>
         </section>
 
-        <!-- 关于ARH999指数 -->
+        <!-- 关于索罗斯指数 / 使用说明 -->
         <section id="about" class="bg-white rounded-xl p-6 mb-8 card-shadow">
             <h3 class="text-lg font-semibold mb-4 flex items-center">
-                <i class="fa fa-info-circle text-primary mr-2"></i>关于指数计算（V13版本）
+                <i class="fa fa-info-circle text-primary mr-2"></i>使用说明与数据格式
             </h3>
             <div class="space-y-4 text-neutral">
-                <p>ARH999指数计算公式：</p>
-                <div class="bg-light p-4 rounded-lg text-center font-medium">
-                    ARH999指数 = (当前价格 / 平均价) × (当前价格 / 指数拟合估值)
+                <p>本工具支持导入自定义股票或资产的历史价格数据进行分析。为了确保分析的准确性，请准备 Excel 或 CSV 文件。</p>
+                
+                <p class="font-medium text-dark">推荐数据格式示例（支持月度或日度数据）：</p>
+                
+                <div class="bg-light p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                    <p class="mb-2 text-gray-500">// Excel 或 CSV 内容示例（两列：日期，价格）</p>
+                    <table class="w-full max-w-xs">
+                        <tr class="border-b border-gray-300">
+                            <td class="py-1">2020-01</td>
+                            <td class="py-1">9339</td>
+                        </tr>
+                        <tr class="border-b border-gray-300">
+                            <td class="py-1">2020-02</td>
+                            <td class="py-1">8650</td>
+                        </tr>
+                        <tr class="border-b border-gray-300">
+                            <td class="py-1">2020-03</td>
+                            <td class="py-1">6454</td>
+                        </tr>
+                        <tr class="border-b border-gray-300">
+                            <td class="py-1">2020-04</td>
+                            <td class="py-1">8776</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1">2020-05</td>
+                            <td class="py-1">9480</td>
+                        </tr>
+                    </table>
                 </div>
                 
-                <p class="font-medium">指数拟合模型（V13版本核心）：</p>
-                <div class="bg-light p-4 rounded-lg text-center font-medium">
-                    价格(X) = a × e^(b × X)
-                </div>
-                <p>其中：X为自变量，a为初始值系数，b为增长率系数，e为自然常数</p>
-                
-                <p class="font-medium">波普尔指标X计算公式：</p>
-                <div class="bg-light p-4 rounded-lg text-center font-medium">
-                    波普尔指标X = ARH999指数值 / 拟合增长率
-                </div>
-                <p>波普尔指标状态判断规则：</p>
+                <p>参考线计算说明：</p>
                 <ul class="list-disc pl-6 space-y-2">
-                    <li>当数据间隔为月度时，波普尔指标X < 10 显示"抄底"</li>
-                    <li>当数据间隔为年度时，波普尔指标X < 1 显示"抄底"</li>
-                    <li>否则显示"正常"</li>
-                </ul>
-                
-                <p class="font-medium">参考线计算方式：</p>
-                <p>参考线基于指数高低点区间均匀划分：</p>
-                <ul class="list-disc pl-6 space-y-2">
-                    <li>黄金买入线 = 指数最小值 + (指数最大值 - 指数最小值) × 黄金买入线百分比</li>
-                    <li>定投线 = 指数最小值 + (指数最大值 - 指数最小值) × 定投线百分比</li>
-                    <li>泡沫线 = 指数最小值 + (指数最大值 - 指数最小值) × 泡沫线百分比</li>
+                    <li>黄金买入线、定投线及泡沫线均基于历史数据区间自动计算。</li>
+                    <li>波普尔指标状态判断规则：根据数据间隔自动适配（月度或年度）进行“抄底”或“正常”的判断。</li>
                 </ul>
             </div>
         </section>
@@ -427,7 +522,7 @@
     <!-- 页脚 -->
     <footer class="bg-white border-t border-gray-200 py-8">
         <div class="container mx-auto px-4 text-center text-neutral text-sm">
-            <p>© 2023 ARH999指数分析工具 | V13版本 | 指数拟合模型 | 仅供参考，不构成投资建议</p>
+            <p>© 2023 索罗斯指数分析工具 | V13版本 | 专业版 | 仅供参考，不构成投资建议</p>
             <div class="mt-4 flex justify-center space-x-4">
                 <a href="#" class="hover:text-primary transition-custom"><i class="fa fa-github text-xl"></i></a>
                 <a href="#" class="hover:text-primary transition-custom"><i class="fa fa-twitter text-xl"></i></a>
@@ -437,13 +532,134 @@
     </footer>
 
     <!-- 通知提示 -->
-    <div id="notification" class="fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center">
+    <div id="notification" class="fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center z-50">
         <i id="notificationIcon" class="mr-2"></i>
         <span id="notificationText"></span>
     </div>
 
     <script>
+        // =======================================================
+        // 核心安全配置 (商业版功能 - 设备绑定升级)
+        // =======================================================
+        
+        const LICENSE_CONFIG = {
+            SECRET_KEY: "MY_SUPER_SECRET_KEY_2025_CHANGE_ME",
+            PREFIX_LEN: 8,
+            CHECKSUM_LEN: 4,
+            CHARSET: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+            STORAGE_KEY: 'soros_license_v13_bound', // 存储键名
+            DEVICE_SALT: 'SOROS_DEVICE_BINDING_SALT_V1', // 内部混淆盐值
+        };
+
+        // 简易哈希算法 (DJB2)
+        function simpleHash(str) {
+            let hash = 5381;
+            for (let i = 0; i < str.length; i++) {
+                hash = ((hash << 5) + hash) + str.charCodeAt(i);
+            }
+            return Math.abs(hash).toString(16);
+        }
+
+        // =======================================================
+        // 设备指纹生成器 (Fingerprint Generator)
+        // =======================================================
+        const FingerprintManager = {
+            // 获取 Canvas 指纹 (浏览器唯一性极高)
+            getCanvasFingerprint: function() {
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 200;
+                    canvas.height = 50;
+                    
+                    // 绘制包含特殊字符的文本
+                    ctx.textBaseline = "top";
+                    ctx.font = "14px 'Arial'";
+                    ctx.textBaseline = "alphabetic";
+                    ctx.fillStyle = "#f60";
+                    ctx.fillRect(125, 1, 62, 20);
+                    ctx.fillStyle = "#069";
+                    ctx.fillText("Soros_Index_v13", 2, 15);
+                    ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+                    ctx.fillText("Fingerprint", 4, 17);
+                    
+                    return canvas.toDataURL();
+                } catch (e) {
+                    return "canvas_error";
+                }
+            },
+
+            // 获取综合设备指纹
+            getDeviceFingerprint: async function() {
+                const components = [
+                    navigator.userAgent,                // 浏览器/系统信息
+                    screen.colorDepth,                  // 屏幕色彩
+                    screen.width + 'x' + screen.height, // 分辨率
+                    new Date().getTimezoneOffset(),     // 时区
+                    navigator.language,                 // 语言
+                    navigator.hardwareConcurrency || 'unknown', // CPU核心数
+                    this.getCanvasFingerprint()         // Canvas渲染特征
+                ];
+                
+                // 将所有特征拼接并哈希
+                return simpleHash(components.join('###'));
+            }
+        };
+
+        // 授权验证核心类 (升级版)
+        const LicenseManager = {
+            generateRandomString: function(length) {
+                let result = '';
+                for (let i = 0; i < length; i++) {
+                    result += LICENSE_CONFIG.CHARSET.charAt(Math.floor(Math.random() * LICENSE_CONFIG.CHARSET.length));
+                }
+                return result;
+            },
+
+            calculateChecksum: function(prefix) {
+                const mix = prefix + LICENSE_CONFIG.SECRET_KEY;
+                let hashVal = parseInt(simpleHash(mix), 16); // 复用simpleHash
+                
+                let checksum = '';
+                for (let i = 0; i < LICENSE_CONFIG.CHECKSUM_LEN; i++) {
+                    const charIndex = hashVal % LICENSE_CONFIG.CHARSET.length;
+                    checksum += LICENSE_CONFIG.CHARSET.charAt(charIndex);
+                    hashVal = Math.floor(hashVal / LICENSE_CONFIG.CHARSET.length);
+                }
+                return checksum;
+            },
+
+            generateCode: function() {
+                const prefix = this.generateRandomString(LICENSE_CONFIG.PREFIX_LEN);
+                const checksum = this.calculateChecksum(prefix);
+                const rawCode = prefix + checksum;
+                return rawCode.match(/.{1,4}/g).join('-');
+            },
+
+            // 基础格式校验
+            isValidFormat: function(inputCode) {
+                const cleanCode = inputCode.replace(/[-\s]/g, '').toUpperCase();
+                if (cleanCode.length !== (LICENSE_CONFIG.PREFIX_LEN + LICENSE_CONFIG.CHECKSUM_LEN)) return false;
+                const prefix = cleanCode.substring(0, LICENSE_CONFIG.PREFIX_LEN);
+                const inputChecksum = cleanCode.substring(LICENSE_CONFIG.PREFIX_LEN);
+                const expectedChecksum = this.calculateChecksum(prefix);
+                return inputChecksum === expectedChecksum;
+            },
+
+            // 生成设备绑定签名
+            generateBindingSignature: function(code, fingerprint) {
+                // 签名 = Hash(CleanCode + Fingerprint + Salt)
+                const cleanCode = code.replace(/[-\s]/g, '').toUpperCase();
+                return simpleHash(cleanCode + fingerprint + LICENSE_CONFIG.DEVICE_SALT);
+            }
+        };
+
+        // =======================================================
+        // 业务逻辑
+        // =======================================================
+
         // 全局变量
+        let currentDeviceFingerprint = null;
         let chart = null;
         let allData = [];
         let currentPage = 1;
@@ -459,10 +675,10 @@
             max: null
         };
         let currentFileName = "未加载数据";
-        let dataInterval = "unknown"; // 可能的值: "monthly", "yearly", "unknown"
-        let growthRates = []; // 存储拟合估值增长率
-        let popperIndexes = []; // 存储波普尔指标X
-        let exponentialParams = {a: null, b: null}; // 指数拟合参数 (Y = a × e^(b×X))
+        let dataInterval = "unknown";
+        let growthRates = [];
+        let popperIndexes = [];
+        let exponentialParams = {a: null, b: null};
         
         // DOM 元素
         const useSampleMonthlyDataBtn = document.getElementById('useSampleMonthlyData');
@@ -480,7 +696,6 @@
         const chartLoader = document.getElementById('chartLoader');
         const themeToggle = document.getElementById('themeToggle');
         
-        // 数据信息显示元素
         const currentFileNameEl = document.getElementById('currentFileName');
         const dataPointCountEl = document.getElementById('dataPointCount');
         const dateRangeEl = document.getElementById('dateRange');
@@ -488,19 +703,15 @@
         const arh999StatusEl = document.getElementById('arh999Status');
         const popperStatusEl = document.getElementById('popperStatus');
         const detectedIntervalEl = document.getElementById('detectedInterval');
-        const exponentialCoefficientEl = document.getElementById('exponentialCoefficient');
         
-        // 波普尔指标和增长率显示元素
         const popperIndexXEl = document.getElementById('popperIndexX');
         const averageGrowthRateEl = document.getElementById('averageGrowthRate');
         const growthRateUnitEl = document.getElementById('growthRateUnit');
         
-        // 参考线概率输入
         const goldenBuyPercentInput = document.getElementById('goldenBuyPercent');
         const regularInvestPercentInput = document.getElementById('regularInvestPercent');
         const bubblePercentInput = document.getElementById('bubblePercent');
         
-        // 参考线显示元素
         const goldenBuyValueEl = document.getElementById('goldenBuyValue');
         const regularInvestValueEl = document.getElementById('regularInvestValue');
         const bubbleValueEl = document.getElementById('bubbleValue');
@@ -508,49 +719,55 @@
         const regularInvestPercentDisplay = document.getElementById('regularInvestPercentDisplay');
         const bubblePercentDisplay = document.getElementById('bubblePercentDisplay');
         
-        // 复选框
         const showPrice = document.getElementById('showPrice');
-        const showEstimate = document.getElementById('showEstimate');
-        const showMA = document.getElementById('showMA');
         const showIndex = document.getElementById('showIndex');
         
-        // 示例月度数据
+        // 示例数据
         const sampleMonthlyData = {
-            dates: [
-                '2020-01', '2020-02', '2020-03', '2020-04', '2020-05', '2020-06',
-                '2020-07', '2020-08', '2020-09', '2020-10', '2020-11', '2020-12',
-                '2021-01', '2021-02', '2021-03', '2021-04', '2021-05', '2021-06',
-                '2021-07', '2021-08', '2021-09', '2021-10', '2021-11', '2021-12'
-            ],
-            prices: [
-                100, 108, 115, 125, 140, 160, 185, 210, 245, 280, 325, 370,
-                430, 490, 560, 640, 730, 830, 940, 1060, 1190, 1330, 1480, 1650
-            ]
+            dates: ['2020-01', '2020-02', '2020-03', '2020-04', '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10', '2020-11', '2020-12', '2021-01', '2021-02', '2021-03', '2021-04', '2021-05', '2021-06', '2021-07', '2021-08', '2021-09', '2021-10', '2021-11', '2021-12'],
+            prices: [100, 108, 115, 125, 140, 160, 185, 210, 245, 280, 325, 370, 430, 490, 560, 640, 730, 830, 940, 1060, 1190, 1330, 1480, 1650]
         };
-        
-        // 示例年度数据
         const sampleYearlyData = {
-            dates: [
-                '2015-01', '2016-01', '2017-01', '2018-01', '2019-01', 
-                '2020-01', '2021-01', '2022-01', '2023-01', '2024-01'
-            ],
-            prices: [
-                100, 130, 180, 250, 350, 500, 720, 1050, 1550, 2300
-            ]
+            dates: ['2015-01', '2016-01', '2017-01', '2018-01', '2019-01', '2020-01', '2021-01', '2022-01', '2023-01', '2024-01'],
+            prices: [100, 130, 180, 250, 350, 500, 720, 1050, 1550, 2300]
         };
         
         // 初始化页面
-        document.addEventListener('DOMContentLoaded', () => {
-            // 设置默认日期范围为月度示例数据
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 1. 初始化指纹
+            document.getElementById('fingerprintStatus').textContent = "正在获取硬件特征...";
+            currentDeviceFingerprint = await FingerprintManager.getDeviceFingerprint();
+            
+            // 2. 显示部分指纹
+            document.getElementById('fingerprintStatus').textContent = `设备ID: ${currentDeviceFingerprint.substring(0, 8)}... (已就绪)`;
+            document.getElementById('activateBtn').disabled = false;
+            document.getElementById('activateBtn').textContent = "立即激活解锁";
+
+            // 3. 检查激活状态
+            checkActivationStatus();
+            
+            // 绑定事件
+            document.getElementById('activateBtn').addEventListener('click', handleActivation);
+            document.getElementById('activationCodeInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleActivation();
+            });
+            
+            // 管理员后台逻辑
+            document.getElementById('generateBtn').addEventListener('click', generateCodes);
+            document.getElementById('closeAdminBtn').addEventListener('click', () => {
+                document.getElementById('adminPanel').classList.add('hidden');
+                document.getElementById('userActivationPanel').classList.remove('hidden');
+            });
+            document.getElementById('copyCodesBtn').addEventListener('click', copyGeneratedCodes);
+            document.getElementById('currentSecretDisplay').textContent = LICENSE_CONFIG.SECRET_KEY;
+
+            // 原有初始化
             if (sampleMonthlyData.dates.length > 0) {
                 startDateInput.value = sampleMonthlyData.dates[0];
                 endDateInput.value = sampleMonthlyData.dates[sampleMonthlyData.dates.length - 1];
             }
-            
-            // 更新百分比显示
             updatePercentDisplays();
             
-            // 事件监听
             useSampleMonthlyDataBtn.addEventListener('click', () => loadSampleData('monthly'));
             useSampleYearlyDataBtn.addEventListener('click', () => loadSampleData('yearly'));
             uploadDataInput.addEventListener('change', handleFileUpload);
@@ -560,41 +777,121 @@
             nextPageBtn.addEventListener('click', goToNextPage);
             themeToggle.addEventListener('click', toggleTheme);
             
-            // 为参考线百分比输入添加即时反馈和限制
-            goldenBuyPercentInput.addEventListener('input', function() {
-                this.value = Math.min(Math.max(parseInt(this.value) || 8, 1), 20);
-                updatePercentDisplays();
-                highlightUpdateButton();
-            });
+            goldenBuyPercentInput.addEventListener('input', function() { this.value = Math.min(Math.max(parseInt(this.value) || 8, 1), 20); updatePercentDisplays(); highlightUpdateButton(); });
+            regularInvestPercentInput.addEventListener('input', function() { this.value = Math.min(Math.max(parseInt(this.value) || 20, 5), 40); updatePercentDisplays(); highlightUpdateButton(); });
+            bubblePercentInput.addEventListener('input', function() { this.value = Math.min(Math.max(parseInt(this.value) || 94, 1), 99); updatePercentDisplays(); highlightUpdateButton(); });
             
-            regularInvestPercentInput.addEventListener('input', function() {
-                this.value = Math.min(Math.max(parseInt(this.value) || 20, 5), 40);
-                updatePercentDisplays();
-                highlightUpdateButton();
-            });
-            
-            bubblePercentInput.addEventListener('input', function() {
-                this.value = Math.min(Math.max(parseInt(this.value) || 94, 1), 99);
-                updatePercentDisplays();
-                highlightUpdateButton();
-            });
-            
-            // 为所有复选框添加事件监听
-            [showPrice, showEstimate, showMA, showIndex].forEach(checkbox => {
-                checkbox.addEventListener('change', function() {
-                    highlightUpdateButton();
-                });
-            });
-            
-            // 日期范围变化时高亮更新按钮
+            [showPrice, showIndex].forEach(checkbox => { checkbox.addEventListener('change', () => highlightUpdateButton()); });
             startDateInput.addEventListener('change', () => highlightUpdateButton());
             endDateInput.addEventListener('change', () => highlightUpdateButton());
             
-            // 初始化数据信息显示
             updateDataInfo();
         });
+
+        // =========== 核心验证逻辑 ===========
+        function checkActivationStatus() {
+            try {
+                const storedData = localStorage.getItem(LICENSE_CONFIG.STORAGE_KEY);
+                if (!storedData) return;
+
+                const { code, signature } = JSON.parse(storedData);
+                
+                // 核心：重新计算当前设备环境下的签名
+                const currentSignature = LicenseManager.generateBindingSignature(code, currentDeviceFingerprint);
+
+                // 只有签名匹配才放行
+                if (signature === currentSignature) {
+                    unlockApp();
+                } else {
+                    console.warn("设备指纹不匹配，可能是LocalStorage被复制到了新设备");
+                }
+            } catch (e) {
+                console.error("激活校验出错", e);
+            }
+        }
+
+        function unlockApp() {
+            const overlay = document.getElementById('activationOverlay');
+            overlay.style.display = 'none';
+            document.body.classList.remove('overflow-hidden');
+        }
+
+        function handleActivation() {
+            const input = document.getElementById('activationCodeInput');
+            const errorMsg = document.getElementById('activationError');
+            const activateBtn = document.getElementById('activateBtn');
+            const code = input.value.trim().toUpperCase();
+            
+            // 管理员后门
+            if (code === 'ADMIN:GENERATE') {
+                document.getElementById('userActivationPanel').classList.add('hidden');
+                document.getElementById('adminPanel').classList.remove('hidden');
+                errorMsg.classList.add('hidden');
+                input.value = '';
+                return;
+            }
+
+            // 1. 验证码格式校验
+            if (LicenseManager.isValidFormat(code)) {
+                // 2. 绑定当前设备
+                const signature = LicenseManager.generateBindingSignature(code, currentDeviceFingerprint);
+                
+                // 3. 存储加密后的绑定信息
+                const storagePayload = JSON.stringify({
+                    code: code,      // 存储原始码以便重算
+                    signature: signature, // 存储签名
+                    activatedAt: new Date().toISOString()
+                });
+                
+                localStorage.setItem(LICENSE_CONFIG.STORAGE_KEY, storagePayload);
+                
+                // 动画反馈
+                activateBtn.innerHTML = '<i class="fa fa-check mr-2"></i> 验证通过，正在绑定设备...';
+                activateBtn.classList.remove('from-blue-600', 'to-blue-700');
+                activateBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+                errorMsg.classList.add('hidden');
+                input.classList.remove('border-red-500');
+                
+                setTimeout(() => {
+                    const overlay = document.getElementById('activationOverlay');
+                    overlay.classList.add('opacity-0', 'scale-110');
+                    setTimeout(() => {
+                        unlockApp();
+                        showNotification('success', '激活成功！已绑定当前设备');
+                    }, 500);
+                }, 800);
+                
+            } else {
+                errorMsg.textContent = "激活码无效，请检查输入";
+                errorMsg.classList.remove('hidden');
+                input.classList.add('border-red-500', 'shake');
+                setTimeout(() => input.classList.remove('shake'), 500);
+            }
+        }
         
-        // 高亮更新按钮，提示用户点击生效
+        function generateCodes() {
+            const count = parseInt(document.getElementById('genCount').value) || 1;
+            const area = document.getElementById('generatedCodesArea');
+            let codes = [];
+            for (let i = 0; i < count; i++) codes.push(LicenseManager.generateCode());
+            area.value = codes.join('\n');
+        }
+
+        function copyGeneratedCodes() {
+            const area = document.getElementById('generatedCodesArea');
+            area.select();
+            document.execCommand('copy');
+            const btn = document.getElementById('copyCodesBtn');
+            const originalText = btn.textContent;
+            btn.textContent = '已复制!';
+            btn.classList.add('bg-green-600');
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.classList.remove('bg-green-600');
+            }, 1500);
+        }
+        // ===================================
+        
         function highlightUpdateButton() {
             updateChartBtn.classList.add('pulse-effect');
             setTimeout(() => {
@@ -602,9 +899,7 @@
             }, 2000);
         }
         
-        // 更新百分比显示
         function updatePercentDisplays() {
-            // 确保值存在且有效
             const goldenValue = parseInt(goldenBuyPercentInput.value) || 8;
             const regularValue = parseInt(regularInvestPercentInput.value) || 20;
             const bubbleValue = parseInt(bubblePercentInput.value) || 94;
@@ -614,11 +909,8 @@
             bubblePercentDisplay.textContent = `${bubbleValue}%`;
         }
         
-        // 获取波普尔指标状态
         function getPopperStatus(popperValue) {
             if (popperValue === null) return { status: "数据不足", class: "bg-gray-100 text-gray-800" };
-            
-            // 根据时间单位判断抄底阈值
             let threshold, status, statusClass;
             
             if (dataInterval === "monthly") {
@@ -643,20 +935,13 @@
                 status = "无法判断";
                 statusClass = "bg-yellow-100 text-yellow-800";
             }
-            
-            return { 
-                status: status, 
-                class: statusClass,
-                threshold: threshold
-            };
+            return { status: status, class: statusClass, threshold: threshold };
         }
         
-        // 更新数据信息显示
         function updateDataInfo() {
             currentFileNameEl.textContent = currentFileName;
             dataPointCountEl.textContent = allData.length;
             
-            // 更新检测到的间隔信息
             if (dataInterval === "monthly") {
                 detectedIntervalEl.textContent = "月度数据";
                 growthRateUnitEl.textContent = "每月";
@@ -668,14 +953,8 @@
                 growthRateUnitEl.textContent = "--";
             }
             
-            // 显示指数拟合系数
-            if (exponentialParams.a !== null && exponentialParams.b !== null) {
-                exponentialCoefficientEl.textContent = `a=${exponentialParams.a.toFixed(4)}, b=${exponentialParams.b.toFixed(4)}`;
-            } else {
-                exponentialCoefficientEl.textContent = "--";
-            }
+            // 已隐藏具体的拟合系数显示，防止泄密
             
-            // 更新增长率和波普尔指标信息
             updateGrowthAndPopperInfo();
             
             if (allData.length > 0) {
@@ -683,37 +962,23 @@
                 const lastDate = allData[allData.length - 1].date;
                 dateRangeEl.textContent = `${firstDate} 至 ${lastDate}`;
                 
-                // 显示最新指数值
                 const latestIndex = allData[allData.length - 1].arh999Index;
                 latestIndexValueEl.textContent = latestIndex ? latestIndex.toFixed(4) : '--';
-                
-                // 更新当前状态
                 updateCurrentStatus();
             } else {
                 dateRangeEl.textContent = "-- 至 --";
                 latestIndexValueEl.textContent = "--";
-                arh999StatusEl.innerHTML = `
-                    <span class="inline-block px-3 py-1 text-sm rounded-full bg-gray-200 text-gray-800">
-                        ARH999状态：等待数据加载
-                    </span>
-                `;
-                popperStatusEl.innerHTML = `
-                    <span class="inline-block px-3 py-1 text-sm rounded-full bg-gray-200 text-gray-800">
-                        波普尔状态：等待数据加载
-                    </span>
-                `;
+                arh999StatusEl.innerHTML = `<span class="inline-block px-3 py-1 text-sm rounded-full bg-gray-200 text-gray-800">索罗斯指数状态：等待数据加载</span>`;
+                popperStatusEl.innerHTML = `<span class="inline-block px-3 py-1 text-sm rounded-full bg-gray-200 text-gray-800">波普尔状态：等待数据加载</span>`;
             }
         }
         
-        // 更新增长率和波普尔指标信息
         function updateGrowthAndPopperInfo() {
             if (growthRates.length === 0 || popperIndexes.length === 0) {
                 popperIndexXEl.textContent = "--";
                 averageGrowthRateEl.textContent = "--";
                 return;
             }
-            
-            // 最新波普尔指标X（最后一个有效指标）
             let latestPopper = null;
             for (let i = popperIndexes.length - 1; i >= 0; i--) {
                 if (popperIndexes[i] !== null) {
@@ -722,45 +987,29 @@
                 }
             }
             
-            // 平均增长率
             const validRates = growthRates.filter(rate => rate !== null);
-            const avgRate = validRates.length > 0 
-                ? validRates.reduce((sum, rate) => sum + rate, 0) / validRates.length 
-                : null;
+            const avgRate = validRates.length > 0 ? validRates.reduce((sum, rate) => sum + rate, 0) / validRates.length : null;
             
-            // 更新显示
             popperIndexXEl.textContent = latestPopper !== null ? latestPopper.toFixed(4) : "--";
+            // 恢复平均增长率显示
             averageGrowthRateEl.textContent = avgRate !== null ? `${(avgRate * 100).toFixed(2)}%` : "--";
             
-            // 更新波普尔状态
             if (latestPopper !== null) {
                 const popperStatus = getPopperStatus(latestPopper);
-                popperStatusEl.innerHTML = `
-                    <span class="inline-block px-3 py-1 text-sm rounded-full ${popperStatus.class}">
-                        波普尔状态：${popperStatus.status} (阈值: ${popperStatus.threshold || '-'})
-                    </span>
-                `;
+                popperStatusEl.innerHTML = `<span class="inline-block px-3 py-1 text-sm rounded-full ${popperStatus.class}">波普尔状态：${popperStatus.status} (阈值: ${popperStatus.threshold || '-'})</span>`;
             }
         }
         
-        // 更新当前状态显示
         function updateCurrentStatus() {
-            if (allData.length === 0 || !referenceLines.goldenBuy || !referenceLines.regularInvest || !referenceLines.bubble) {
-                return;
-            }
+            if (allData.length === 0 || !referenceLines.goldenBuy || !referenceLines.regularInvest || !referenceLines.bubble) return;
             
             const latestIndex = allData[allData.length - 1].arh999Index;
             if (latestIndex === null) {
-                arh999StatusEl.innerHTML = `
-                    <span class="inline-block px-3 py-1 text-sm rounded-full bg-gray-200 text-gray-800">
-                        ARH999状态：数据不足，无法计算
-                    </span>
-                `;
+                arh999StatusEl.innerHTML = `<span class="inline-block px-3 py-1 text-sm rounded-full bg-gray-200 text-gray-800">索罗斯指数状态：数据不足，无法计算</span>`;
                 return;
             }
             
-            let statusClass = '';
-            let statusText = '正常区';
+            let statusClass = '', statusText = '正常区';
             
             if (latestIndex < referenceLines.goldenBuy) {
                 statusClass = 'bg-green-100 text-green-800';
@@ -776,17 +1025,11 @@
                 statusText = '正常区';
             }
             
-            arh999StatusEl.innerHTML = `
-                <span class="inline-block px-3 py-1 text-sm rounded-full ${statusClass}">
-                    ARH999状态：${statusText}
-                </span>
-            `;
+            arh999StatusEl.innerHTML = `<span class="inline-block px-3 py-1 text-sm rounded-full ${statusClass}">索罗斯指数状态：${statusText}</span>`;
         }
         
-        // 加载示例数据
         function loadSampleData(type) {
             showLoader();
-            
             let sampleData, fileName;
             if (type === 'monthly') {
                 sampleData = sampleMonthlyData;
@@ -797,27 +1040,20 @@
                 fileName = "示例年度数据";
                 dataInterval = "yearly";
             }
-            
             currentFileName = fileName;
             
             setTimeout(() => {
                 try {
-                    // 处理数据
                     const processedData = processData(sampleData.dates, sampleData.prices);
                     allData = processedData;
                     filterDataByDateRange();
-                    
-                    // 计算指数的最大最小值和参考线
                     calculateIndexMinMax();
                     calculateReferenceLines();
-                    
-                    // 更新图表和表格
                     renderChart();
                     renderTable();
                     updateReferenceLineDisplays();
                     updateDataInfo();
-                    
-                    showNotification('success', `${fileName}加载成功，已应用指数拟合模型`);
+                    showNotification('success', `${fileName}加载成功，已应用智能算法`);
                 } catch (error) {
                     showNotification('error', `数据加载失败: ${error.message}`);
                 } finally {
@@ -826,42 +1062,24 @@
             }, 800);
         }
         
-        // 检测数据时间间隔
         function detectDataInterval(dates) {
             if (dates.length < 2) return "unknown";
-            
-            // 转换为moment对象
             const momentDates = dates.map(date => moment(date, 'YYYY-MM'));
-            
-            // 计算相邻日期之间的月份差
             const intervals = [];
             for (let i = 1; i < momentDates.length; i++) {
-                const diffMonths = momentDates[i].diff(momentDates[i-1], 'months');
-                intervals.push(diffMonths);
+                intervals.push(momentDates[i].diff(momentDates[i-1], 'months'));
             }
-            
-            // 计算平均间隔（月）
             const avgInterval = intervals.reduce((sum, val) => sum + val, 0) / intervals.length;
-            
-            // 判断间隔类型：接近12个月的视为年度数据，接近1个月的视为月度数据
-            if (avgInterval >= 10 && avgInterval <= 14) { // 10-14个月视为年度数据
-                return "yearly";
-            } else if (avgInterval >= 0.5 && avgInterval <= 1.5) { // 0.5-1.5个月视为月度数据
-                return "monthly";
-            } else {
-                return "unknown";
-            }
+            if (avgInterval >= 10 && avgInterval <= 14) return "yearly";
+            else if (avgInterval >= 0.5 && avgInterval <= 1.5) return "monthly";
+            else return "unknown";
         }
         
-        // 处理文件上传 - 支持CSV和XLSX
         function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
-            
             showLoader();
             currentFileName = file.name;
-            
-            // 检查文件类型
             const fileName = file.name.toLowerCase();
             const isCSV = fileName.endsWith('.csv') || fileName.endsWith('.txt');
             const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
@@ -873,34 +1091,24 @@
                 return;
             }
             
-            // 处理CSV文件
             if (isCSV) {
                 Papa.parse(file, {
                     header: true,
                     skipEmptyLines: true,
-                    complete: function(results) {
-                        processParsedData(results.data);
-                    },
+                    complete: function(results) { processParsedData(results.data); },
                     error: function(error) {
                         showNotification('error', `文件解析错误: ${error.message}`);
                         hideLoader();
                         uploadDataInput.value = '';
                     }
                 });
-            } 
-            // 处理Excel文件
-            else if (isExcel) {
+            } else if (isExcel) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
                         const data = new Uint8Array(e.target.result);
                         const workbook = XLSX.read(data, { type: 'array' });
-                        
-                        // 获取第一个工作表
-                        const firstSheetName = workbook.SheetNames[0];
-                        const worksheet = workbook.Sheets[firstSheetName];
-                        
-                        // 转换为JSON
+                        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                         const jsonData = XLSX.utils.sheet_to_json(worksheet);
                         processParsedData(jsonData);
                     } catch (error) {
@@ -913,178 +1121,91 @@
             }
         }
         
-        // 处理解析后的数据（CSV或Excel）
         function processParsedData(jsonData) {
             try {
-                // 验证数据
-                if (!jsonData || jsonData.length === 0) {
-                    throw new Error('文件中没有数据');
-                }
-                
-                // 尝试查找日期和价格列（支持多种可能的列名）
+                if (!jsonData || jsonData.length === 0) throw new Error('文件中没有数据');
                 const firstRow = jsonData[0];
-                let dateColumn = null;
-                let priceColumn = null;
-                
-                // 可能的日期列名
+                let dateColumn = null, priceColumn = null;
                 const possibleDateColumns = ['日期', '时间', 'date', 'time', '月份', '年份'];
-                // 可能的价格列名
                 const possiblePriceColumns = ['价格', 'price', '价值', 'value'];
                 
-                // 查找日期列
-                for (const col of possibleDateColumns) {
-                    if (firstRow.hasOwnProperty(col)) {
-                        dateColumn = col;
-                        break;
-                    }
-                }
+                for (const col of possibleDateColumns) { if (firstRow.hasOwnProperty(col)) { dateColumn = col; break; } }
+                for (const col of possiblePriceColumns) { if (firstRow.hasOwnProperty(col)) { priceColumn = col; break; } }
                 
-                // 查找价格列
-                for (const col of possiblePriceColumns) {
-                    if (firstRow.hasOwnProperty(col)) {
-                        priceColumn = col;
-                        break;
-                    }
-                }
+                if (!dateColumn || !priceColumn) throw new Error('文件必须包含日期列和价格列（尝试识别列名：日期、时间、价格等）');
                 
-                if (!dateColumn || !priceColumn) {
-                    throw new Error('文件必须包含日期列和价格列（尝试识别列名：日期、时间、价格等）');
-                }
-                
-                // 提取数据
                 const yearMonthData = [];
                 const priceData = [];
                 
                 jsonData.forEach(row => {
-                    // 确保日期和价格有效
                     if (row[dateColumn] && row[priceColumn]) {
-                        // 尝试格式化日期为YYYY-MM
                         let dateStr = row[dateColumn].toString();
-                        // 处理Excel日期（如果是数字）
                         if (!isNaN(dateStr) && dateStr.length > 5) {
-                            const excelDate = parseFloat(dateStr);
-                            const date = XLSX.SSF.parse_date_code(excelDate);
+                            const date = XLSX.SSF.parse_date_code(parseFloat(dateStr));
                             dateStr = `${date.y}-${(date.m + 1).toString().padStart(2, '0')}`;
                         } else {
-                            // 尝试使用moment解析各种日期格式
                             const parsedDate = moment(dateStr);
-                            if (parsedDate.isValid()) {
-                                dateStr = parsedDate.format('YYYY-MM');
-                            }
+                            if (parsedDate.isValid()) dateStr = parsedDate.format('YYYY-MM');
                         }
-                        
                         yearMonthData.push(dateStr);
                         priceData.push(parseFloat(row[priceColumn]));
                     }
                 });
                 
-                if (yearMonthData.length < 2) {
-                    throw new Error('至少需要2个有效数据点');
-                }
+                if (yearMonthData.length < 2) throw new Error('至少需要2个有效数据点');
                 
-                // 检测数据间隔类型
                 dataInterval = detectDataInterval(yearMonthData);
-                
-                // 处理数据
                 const processedData = processData(yearMonthData, priceData);
                 allData = processedData;
-                
-                // 更新日期选择器
                 startDateInput.value = yearMonthData[0];
                 endDateInput.value = yearMonthData[yearMonthData.length - 1];
                 
                 filterDataByDateRange();
                 calculateIndexMinMax();
                 calculateReferenceLines();
-                
-                // 更新图表和表格
                 renderChart();
                 renderTable();
                 updateReferenceLineDisplays();
                 updateDataInfo();
-                
-                showNotification('success', '数据上传成功，已应用指数拟合模型');
+                showNotification('success', '数据上传成功，已应用智能算法');
             } catch (error) {
                 showNotification('error', `文件处理失败: ${error.message}`);
             } finally {
                 hideLoader();
-                // 重置文件输入，允许重复上传同一文件
                 uploadDataInput.value = '';
             }
         }
         
-        // 计算指数的最大值和最小值
         function calculateIndexMinMax() {
-            // 收集所有有效的ARH999指数值
-            const validIndexes = allData
-                .map(item => item.arh999Index)
-                .filter(index => index !== null && !isNaN(index));
-            
-            if (validIndexes.length < 2) { // 需要足够的数据点来计算
-                indexMinMax = {
-                    min: null,
-                    max: null
-                };
-                return;
-            }
-            
-            // 计算最小值和最大值
-            indexMinMax = {
-                min: Math.min(...validIndexes),
-                max: Math.max(...validIndexes)
-            };
+            const validIndexes = allData.map(item => item.arh999Index).filter(index => index !== null && !isNaN(index));
+            if (validIndexes.length < 2) { indexMinMax = { min: null, max: null }; return; }
+            indexMinMax = { min: Math.min(...validIndexes), max: Math.max(...validIndexes) };
         }
         
-        // 处理数据 - 计算所有指标
         function processData(yearMonthData, priceData) {
-            // 验证数据
-            if (yearMonthData.length !== priceData.length) {
-                throw new Error('日期和价格数据长度不匹配');
-            }
+            if (yearMonthData.length !== priceData.length) throw new Error('日期和价格数据长度不匹配');
+            if (yearMonthData.length < 2) throw new Error('数据点不足，至少需要2个数据点');
             
-            if (yearMonthData.length < 2) {
-                throw new Error('数据点不足，至少需要2个数据点');
-            }
-            
-            // 转换日期为moment对象以便计算
             const dates = yearMonthData.map(date => moment(date, 'YYYY-MM'));
-            
-            // 创建X自变量（从0开始的序列）
             const X = Array.from({length: yearMonthData.length}, (_, i) => i);
-            
-            // 应用指数拟合模型 Y = a × e^(b×X)
             const {a, b} = fitExponentialModel(X, priceData);
             exponentialParams = {a, b};
             
-            // 计算指数拟合估值
             const estimatePrices = X.map(x => a * Math.exp(b * x));
-            
-            // 计算拟合估值增长率
             growthRates = calculateGrowthRates(estimatePrices);
-            
-            // 根据数据间隔计算平均价
             const movingAverages = calculateAveragePrice(dates, priceData);
             
-            // 计算ARH999指数
             const arh999Indexes = priceData.map((price, i) => {
                 const avgPrice = movingAverages[i];
                 const estPrice = estimatePrices[i];
-                
-                if (avgPrice <= 0 || estPrice <= 0 || !avgPrice) {
-                    return null;
-                }
-                
+                if (avgPrice <= 0 || estPrice <= 0 || !avgPrice) return null;
                 return (price / avgPrice) * (price / estPrice);
             });
             
-            // 计算波普尔指标X (ARH999指数 / 增长率)
             popperIndexes = calculatePopperIndexX(arh999Indexes, growthRates);
             
-            // 计算每个数据点的状态
             const dataWithStatus = yearMonthData.map((date, i) => {
                 const popperStatus = getPopperStatus(popperIndexes[i]);
-                
-                // 确定ARH999状态
                 let arh999StatusClass = 'bg-gray-100 text-gray-800';
                 let arh999StatusText = '正常区';
                 
@@ -1093,16 +1214,9 @@
                     const regularInvest = indexMinMax.min + (indexMinMax.max - indexMinMax.min) * (parseInt(regularInvestPercentInput.value) / 100);
                     const bubble = indexMinMax.min + (indexMinMax.max - indexMinMax.min) * (parseInt(bubblePercentInput.value) / 100);
                     
-                    if (arh999Indexes[i] < goldenBuy) {
-                        arh999StatusClass = 'bg-green-100 text-green-800';
-                        arh999StatusText = '黄金买入区';
-                    } else if (arh999Indexes[i] < regularInvest) {
-                        arh999StatusClass = 'bg-blue-100 text-blue-800';
-                        arh999StatusText = '定投区';
-                    } else if (arh999Indexes[i] > bubble) {
-                        arh999StatusClass = 'bg-red-100 text-red-800';
-                        arh999StatusText = '泡沫区';
-                    }
+                    if (arh999Indexes[i] < goldenBuy) { arh999StatusClass = 'bg-green-100 text-green-800'; arh999StatusText = '黄金买入区'; }
+                    else if (arh999Indexes[i] < regularInvest) { arh999StatusClass = 'bg-blue-100 text-blue-800'; arh999StatusText = '定投区'; }
+                    else if (arh999Indexes[i] > bubble) { arh999StatusClass = 'bg-red-100 text-red-800'; arh999StatusText = '泡沫区'; }
                 }
                 
                 return {
@@ -1114,623 +1228,263 @@
                     growthRate: growthRates[i],
                     popperIndexX: popperIndexes[i],
                     momentDate: dates[i],
-                    arh999Status: {
-                        text: arh999StatusText,
-                        class: arh999StatusClass
-                    },
-                    popperStatus: {
-                        text: popperStatus.status,
-                        class: popperStatus.class
-                    }
+                    arh999Status: { text: arh999StatusText, class: arh999StatusClass },
+                    popperStatus: { text: popperStatus.status, class: popperStatus.class }
                 };
             });
-            
             return dataWithStatus;
         }
         
-        // 指数模型拟合 Y = a × e^(b×X)
         function fitExponentialModel(X, Y) {
             try {
-                // 过滤掉非正值（指数函数不适用非正值）
-                const validIndices = Y.map((val, idx) => val > 0 ? idx : -1)
-                                     .filter(idx => idx !== -1);
-                
-                if (validIndices.length < 2) {
-                    throw new Error('数据点不足或包含非正值，无法进行指数拟合');
-                }
+                const validIndices = Y.map((val, idx) => val > 0 ? idx : -1).filter(idx => idx !== -1);
+                if (validIndices.length < 2) throw new Error('数据点不足或包含非正值，无法进行指数拟合');
                 
                 const xFiltered = validIndices.map(idx => X[idx]);
                 const yFiltered = validIndices.map(idx => Y[idx]);
-                
-                // 对Y取自然对数，将指数模型转换为线性模型：ln(Y) = ln(a) + b×X
                 const lnY = yFiltered.map(y => Math.log(y));
-                
-                // 计算线性回归参数（使用最小二乘法）
                 const n = xFiltered.length;
                 const sumX = xFiltered.reduce((sum, x) => sum + x, 0);
                 const sumLnY = lnY.reduce((sum, y) => sum + y, 0);
                 const sumX2 = xFiltered.reduce((sum, x) => sum + x * x, 0);
                 const sumXLnY = xFiltered.reduce((sum, x, i) => sum + x * lnY[i], 0);
-                
-                // 计算斜率(b)和截距(ln(a))
                 const denominator = n * sumX2 - sumX * sumX;
-                if (denominator === 0) {
-                    throw new Error('无法进行线性回归，数据可能存在共线性问题');
-                }
                 
+                if (denominator === 0) throw new Error('无法进行线性回归，数据可能存在共线性问题');
                 const b = (n * sumXLnY - sumX * sumLnY) / denominator;
                 const lnA = (sumLnY * sumX2 - sumX * sumXLnY) / denominator;
-                
-                // 计算a（指数化）
-                const a = Math.exp(lnA);
-                
-                return {a, b};
+                return {a: Math.exp(lnA), b};
             } catch (error) {
                 console.error('指数拟合失败:', error);
-                // 拟合失败时返回默认值
                 return {a: Y[0], b: 0.05};
             }
         }
         
-        // 计算拟合估值增长率
         function calculateGrowthRates(estimatePrices) {
-            const growthRates = [null]; // 第一个数据点没有前值，增长率为null
-            
-            // 从第二个数据点开始计算增长率
+            const growthRates = [null];
             for (let i = 1; i < estimatePrices.length; i++) {
                 const prevEstimate = estimatePrices[i - 1];
                 const currentEstimate = estimatePrices[i];
-                
-                if (prevEstimate <= 0 || currentEstimate <= 0) {
-                    growthRates.push(null);
-                } else {
-                    // 增长率 = (当前值 / 前值 - 1)
-                    const rate = (currentEstimate / prevEstimate) - 1;
-                    growthRates.push(rate);
-                }
+                if (prevEstimate <= 0 || currentEstimate <= 0) growthRates.push(null);
+                else growthRates.push((currentEstimate / prevEstimate) - 1);
             }
-            
             return growthRates;
         }
         
-        // 计算波普尔指标X (ARH999指数 / 增长率)
         function calculatePopperIndexX(arh999Indexes, growthRates) {
             const popperIndexes = [];
-            
             for (let i = 0; i < arh999Indexes.length; i++) {
                 const indexValue = arh999Indexes[i];
                 const growthRate = growthRates[i];
-                
-                // 增长率为0或负数时，波普尔指标无意义
-                if (indexValue === null || growthRate === null || growthRate <= 0) {
-                    popperIndexes.push(null);
-                } else {
-                    // 波普尔指标X = ARH999指数值 / 增长速率
-                    popperIndexes.push(indexValue / growthRate);
-                }
+                if (indexValue === null || growthRate === null || growthRate <= 0) popperIndexes.push(null);
+                else popperIndexes.push(indexValue / growthRate);
             }
-            
             return popperIndexes;
         }
         
-        // 根据数据间隔类型计算平均价
         function calculateAveragePrice(dates, prices) {
             const averages = [];
-            
-            // 如果是年度数据，使用当前点的前两个历史价格的平均值
             if (dataInterval === "yearly") {
                 for (let i = 0; i < dates.length; i++) {
-                    // 收集前两个历史数据点
                     const previousPrices = [];
-                    // 从当前点往前数，最多取两个数据点
-                    for (let j = i - 1; j >= 0 && previousPrices.length < 2; j--) {
-                        previousPrices.push(prices[j]);
-                    }
-                    
-                    // 计算平均值
-                    if (previousPrices.length > 0) {
-                        const sum = previousPrices.reduce((a, b) => a + b, 0);
-                        averages.push(sum / previousPrices.length);
-                    } else {
-                        averages.push(null); // 第一个点没有历史数据
-                    }
+                    for (let j = i - 1; j >= 0 && previousPrices.length < 2; j--) previousPrices.push(prices[j]);
+                    if (previousPrices.length > 0) averages.push(previousPrices.reduce((a, b) => a + b, 0) / previousPrices.length);
+                    else averages.push(null);
                 }
-            } 
-            // 月度数据或未识别数据，使用过去12个月的平均值
-            else {
+            } else {
                 for (let i = 0; i < dates.length; i++) {
                     const currentDate = dates[i];
-                    // 计算当前日期之前12个月的日期点
                     const twelveMonthsBefore = moment(currentDate).subtract(12, 'months');
-                    
-                    // 收集所有在过去12个月内的历史数据点（不包括当前点）
                     const relevantPrices = [];
-                    for (let j = 0; j < i; j++) { // j < i 确保不包含当前数据点
-                        // 检查历史数据点是否在过去12个月范围内
-                        if (dates[j].isAfter(twelveMonthsBefore) && dates[j].isBefore(currentDate)) {
-                            relevantPrices.push(prices[j]);
-                        }
+                    for (let j = 0; j < i; j++) {
+                        if (dates[j].isAfter(twelveMonthsBefore) && dates[j].isBefore(currentDate)) relevantPrices.push(prices[j]);
                     }
-                    
-                    // 如果12个月内没有足够的数据，使用所有可用的历史数据
-                    if (relevantPrices.length === 0) {
-                        for (let j = 0; j < i; j++) {
-                            relevantPrices.push(prices[j]);
-                        }
-                    }
-                    
-                    // 计算平均值
-                    if (relevantPrices.length > 0) {
-                        const sum = relevantPrices.reduce((a, b) => a + b, 0);
-                        averages.push(sum / relevantPrices.length);
-                    } else {
-                        averages.push(null); // 第一个点没有历史数据
-                    }
+                    if (relevantPrices.length === 0) for (let j = 0; j < i; j++) relevantPrices.push(prices[j]);
+                    if (relevantPrices.length > 0) averages.push(relevantPrices.reduce((a, b) => a + b, 0) / relevantPrices.length);
+                    else averages.push(null);
                 }
             }
-            
             return averages;
         }
         
-        // 计算参考线值 - 基于高低点区间均匀划分
         function calculateReferenceLines() {
             if (indexMinMax.min === null || indexMinMax.max === null) {
-                referenceLines = {
-                    goldenBuy: null,
-                    regularInvest: null,
-                    bubble: null
-                };
+                referenceLines = { goldenBuy: null, regularInvest: null, bubble: null };
                 return;
             }
-            
-            // 获取百分比值并确保其有效性
             const goldenBuyPercent = Math.min(Math.max(parseInt(goldenBuyPercentInput.value) || 8, 1), 20) / 100;
             const regularInvestPercent = Math.min(Math.max(parseInt(regularInvestPercentInput.value) || 20, 5), 40) / 100;
             const bubblePercent = Math.min(Math.max(parseInt(bubblePercentInput.value) || 94, 1), 99) / 100;
-            
-            // 计算指数区间
             const indexRange = indexMinMax.max - indexMinMax.min;
-            
-            // 计算参考线值：最低点 + 区间 * 百分比
             referenceLines = {
                 goldenBuy: indexMinMax.min + indexRange * goldenBuyPercent,
                 regularInvest: indexMinMax.min + indexRange * regularInvestPercent,
                 bubble: indexMinMax.min + indexRange * bubblePercent
             };
-            
-            // 更新显示
             updateReferenceLineDisplays();
         }
         
-        // 更新参考线显示
         function updateReferenceLineDisplays() {
             goldenBuyValueEl.textContent = referenceLines.goldenBuy ? referenceLines.goldenBuy.toFixed(4) : '--';
             regularInvestValueEl.textContent = referenceLines.regularInvest ? referenceLines.regularInvest.toFixed(4) : '--';
             bubbleValueEl.textContent = referenceLines.bubble ? referenceLines.bubble.toFixed(4) : '--';
         }
         
-        // 按日期范围过滤数据
         function filterDataByDateRange() {
             const startDate = startDateInput.value;
             const endDate = endDateInput.value;
-            
-            if (!startDate || !endDate || allData.length === 0) {
-                filteredData = [...allData];
-                return;
-            }
-            
-            filteredData = allData.filter(item => {
-                return item.date >= startDate && item.date <= endDate;
-            });
+            if (!startDate || !endDate || allData.length === 0) { filteredData = [...allData]; return; }
+            filteredData = allData.filter(item => item.date >= startDate && item.date <= endDate);
         }
         
-        // 渲染图表
         function renderChart() {
             const ctx = document.getElementById('mainChart').getContext('2d');
-            
-            // 销毁现有图表
-            if (chart) {
-                chart.destroy();
-            }
-            
-            // 准备数据
+            if (chart) chart.destroy();
             const labels = filteredData.map(item => item.date);
             const prices = filteredData.map(item => item.price);
-            const estimates = filteredData.map(item => item.estimatePrice);
-            const movingAverages = filteredData.map(item => item.movingAverage);
             const indexes = filteredData.map(item => item.arh999Index);
             
-            // 准备数据集
             const datasets = [];
+            if (showPrice.checked) datasets.push({ label: '历史价格', data: prices, borderColor: '#000000', backgroundColor: 'rgba(0, 0, 0, 0.05)', borderWidth: 2, fill: false, yAxisID: 'y' });
+            // 已隐藏指数拟合线和均线，只保留价格和指数
             
-            if (showPrice.checked) {
-                datasets.push({
-                    label: '历史价格',
-                    data: prices,
-                    borderColor: '#000000',
-                    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-                    borderWidth: 2,
-                    fill: false,
-                    yAxisID: 'y'
-                });
-            }
+            if (showIndex.checked) datasets.push({ label: '索罗斯指数', data: indexes, borderColor: '#F53F3F', backgroundColor: 'rgba(245, 63, 63, 0.1)', borderWidth: 2, fill: true, yAxisID: 'y1' });
             
-            if (showEstimate.checked) {
-                datasets.push({
-                    label: '指数拟合估值 (Y = a×e^(b×X))',
-                    data: estimates,
-                    borderColor: '#36CFC9',
-                    borderWidth: 2,
-                    borderDash: [5, 5],
-                    fill: false,
-                    yAxisID: 'y'
-                });
-            }
-            
-            if (showMA.checked) {
-                const maLabel = dataInterval === "yearly" ? "前两期平均价" : "12个月平均价";
-                datasets.push({
-                    label: maLabel,
-                    data: movingAverages,
-                    borderColor: '#86909C',
-                    borderWidth: 2,
-                    borderDash: [2, 2],
-                    fill: false,
-                    yAxisID: 'y'
-                });
-            }
-            
-            if (showIndex.checked) {
-                datasets.push({
-                    label: 'ARH999指数',
-                    data: indexes,
-                    borderColor: '#F53F3F',
-                    backgroundColor: 'rgba(245, 63, 63, 0.1)',
-                    borderWidth: 2,
-                    fill: true,
-                    yAxisID: 'y1'
-                });
-            }
-            
-            // 添加参考线插件
             const annotationPlugin = {
                 id: 'annotation',
                 beforeDraw: (chart) => {
                     if (!showIndex.checked) return;
-                    
                     const {ctx, scales} = chart;
                     const y1Scale = scales.y1;
                     
-                    // 绘制黄金买入线
                     if (referenceLines.goldenBuy !== null) {
                         const lineYGolden = y1Scale.getPixelForValue(referenceLines.goldenBuy);
-                        ctx.save();
-                        ctx.beginPath();
-                        ctx.moveTo(scales.x.getPixelForValue(0), lineYGolden);
-                        ctx.lineTo(scales.x.getPixelForValue(labels.length - 1), lineYGolden);
-                        ctx.lineWidth = 2;
-                        ctx.strokeStyle = 'rgba(72, 187, 120, 0.8)';
-                        ctx.setLineDash([5, 5]);
-                        ctx.stroke();
-                        
-                        // 添加文本标签
-                        ctx.fillStyle = 'rgba(72, 187, 120, 0.9)';
-                        ctx.font = '12px sans-serif';
-                        ctx.fillText(`黄金买入线 (${goldenBuyPercentDisplay.textContent})`, scales.x.getPixelForValue(0) + 5, lineYGolden - 5);
-                        ctx.restore();
+                        ctx.save(); ctx.beginPath(); ctx.moveTo(scales.x.getPixelForValue(0), lineYGolden); ctx.lineTo(scales.x.getPixelForValue(labels.length - 1), lineYGolden);
+                        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(72, 187, 120, 0.8)'; ctx.setLineDash([5, 5]); ctx.stroke();
+                        ctx.fillStyle = 'rgba(72, 187, 120, 0.9)'; ctx.font = '12px sans-serif'; ctx.fillText(`黄金买入线 (${goldenBuyPercentDisplay.textContent})`, scales.x.getPixelForValue(0) + 5, lineYGolden - 5); ctx.restore();
                     }
-                    
-                    // 绘制定投线
                     if (referenceLines.regularInvest !== null) {
-                        ctx.save();
-                        const lineYRegular = y1Scale.getPixelForValue(referenceLines.regularInvest);
-                        ctx.beginPath();
-                        ctx.moveTo(scales.x.getPixelForValue(0), lineYRegular);
-                        ctx.lineTo(scales.x.getPixelForValue(labels.length - 1), lineYRegular);
-                        ctx.lineWidth = 2;
-                        ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
-                        ctx.setLineDash([5, 5]);
-                        ctx.stroke();
-                        
-                        // 添加文本标签
-                        ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
-                        ctx.font = '12px sans-serif';
-                        ctx.fillText(`定投线 (${regularInvestPercentDisplay.textContent})`, scales.x.getPixelForValue(0) + 5, lineYRegular - 5);
-                        ctx.restore();
+                        ctx.save(); const lineYRegular = y1Scale.getPixelForValue(referenceLines.regularInvest);
+                        ctx.beginPath(); ctx.moveTo(scales.x.getPixelForValue(0), lineYRegular); ctx.lineTo(scales.x.getPixelForValue(labels.length - 1), lineYRegular);
+                        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)'; ctx.setLineDash([5, 5]); ctx.stroke();
+                        ctx.fillStyle = 'rgba(59, 130, 246, 0.9)'; ctx.font = '12px sans-serif'; ctx.fillText(`定投线 (${regularInvestPercentDisplay.textContent})`, scales.x.getPixelForValue(0) + 5, lineYRegular - 5); ctx.restore();
                     }
-                    
-                    // 绘制泡沫线
                     if (referenceLines.bubble !== null) {
-                        ctx.save();
-                        const lineYBubble = y1Scale.getPixelForValue(referenceLines.bubble);
-                        ctx.beginPath();
-                        ctx.moveTo(scales.x.getPixelForValue(0), lineYBubble);
-                        ctx.lineTo(scales.x.getPixelForValue(labels.length - 1), lineYBubble);
-                        ctx.lineWidth = 2;
-                        ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
-                        ctx.setLineDash([5, 5]);
-                        ctx.stroke();
-                        
-                        // 添加文本标签
-                        ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
-                        ctx.font = '12px sans-serif';
-                        ctx.fillText(`泡沫线 (${bubblePercentDisplay.textContent})`, scales.x.getPixelForValue(0) + 5, lineYBubble - 5);
-                        ctx.restore();
+                        ctx.save(); const lineYBubble = y1Scale.getPixelForValue(referenceLines.bubble);
+                        ctx.beginPath(); ctx.moveTo(scales.x.getPixelForValue(0), lineYBubble); ctx.lineTo(scales.x.getPixelForValue(labels.length - 1), lineYBubble);
+                        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)'; ctx.setLineDash([5, 5]); ctx.stroke();
+                        ctx.fillStyle = 'rgba(239, 68, 68, 0.9)'; ctx.font = '12px sans-serif'; ctx.fillText(`泡沫线 (${bubblePercentDisplay.textContent})`, scales.x.getPixelForValue(0) + 5, lineYBubble - 5); ctx.restore();
                     }
                 }
             };
             
-            // 添加指数公式说明
-            const equationPlugin = {
-                id: 'equation',
-                afterDraw: (chart) => {
-                    if (!showEstimate.checked || exponentialParams.a === null || exponentialParams.b === null) return;
-                    
-                    const {ctx, chartArea} = chart;
-                    if (!chartArea) return;
-                    
-                    // 在图表右上角显示指数公式
-                    ctx.save();
-                    ctx.font = '14px sans-serif';
-                    ctx.fillStyle = '#36CFC9';
-                    const equation = `指数拟合: Y = ${exponentialParams.a.toFixed(2)} × e^(${exponentialParams.b.toFixed(4)}×X)`;
-                    ctx.fillText(equation, chartArea.right - 320, chartArea.top + 20);
-                    ctx.restore();
-                }
-            };
+            // 已移除方程显示插件
             
-            // 配置Y轴
-            const scalesConfig = {
-                x: {
-                    title: {
-                        display: true,
-                        text: '日期'
-                    },
-                    ticks: {
-                        maxRotation: 45,
-                        minRotation: 45,
-                        maxTicksLimit: 12
-                    }
-                },
-                y: {
-                    type: 'linear',
-                    display: showPrice.checked || showEstimate.checked || showMA.checked,
-                    position: 'left',
-                    title: {
-                        display: true,
-                        text: '价格 / 估值'
-                    },
-                    grid: {
-                        drawOnChartArea: false
-                    }
-                },
-                y1: {
-                    type: 'linear',
-                    display: showIndex.checked,
-                    position: 'right',
-                    title: {
-                        display: true,
-                        text: 'ARH999指数'
-                    },
-                    grid: {
-                        drawOnChartArea: false
-                    }
-                }
-            };
-            
-            // 创建图表
             chart = new Chart(ctx, {
                 type: 'line',
-                plugins: [annotationPlugin, equationPlugin],
-                data: {
-                    labels: labels,
-                    datasets: datasets
-                },
+                plugins: [annotationPlugin],
+                data: { labels: labels, datasets: datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { title: { display: true, text: '日期' }, ticks: { maxRotation: 45, minRotation: 45, maxTicksLimit: 12 } },
+                        y: { type: 'linear', display: showPrice.checked, position: 'left', title: { display: true, text: '价格' }, grid: { drawOnChartArea: false } },
+                        y1: { type: 'linear', display: showIndex.checked, position: 'right', title: { display: true, text: '索罗斯指数' }, grid: { drawOnChartArea: false } }
                     },
-                    scales: scalesConfig,
                     plugins: {
-                        legend: {
-                            position: 'top',
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    if (label) {
-                                        label += ': ';
-                                    }
-                                    if (context.parsed.y !== null) {
-                                        // 价格相关数据保留两位小数
-                                        if (context.dataset.yAxisID === 'y') {
-                                            label += context.parsed.y.toFixed(2);
-                                        } 
-                                        // 指数保留四位小数
-                                        else if (context.dataset.yAxisID === 'y1') {
-                                            label += context.parsed.y.toFixed(4);
-                                        }
-                                    }
-                                    return label;
-                                }
+                        legend: { position: 'top' },
+                        tooltip: { callbacks: { label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) label += ': ';
+                            if (context.parsed.y !== null) {
+                                if (context.dataset.yAxisID === 'y') label += context.parsed.y.toFixed(2);
+                                else if (context.dataset.yAxisID === 'y1') label += context.parsed.y.toFixed(4);
                             }
-                        }
+                            return label;
+                        }}}
                     }
                 }
             });
         }
         
-        // 渲染表格
         function renderTable() {
-            // 重置当前页
             currentPage = 1;
-            
-            // 计算分页
             const totalPages = Math.ceil(filteredData.length / pageSize);
-            
-            // 更新分页信息
             updatePagination(totalPages);
-            
-            // 获取当前页数据
             const startIndex = (currentPage - 1) * pageSize;
             const endIndex = Math.min(startIndex + pageSize, filteredData.length);
             const currentData = filteredData.slice(startIndex, endIndex);
             
-            // 更新表格内容
             dataTableBody.innerHTML = '';
-            
             if (currentData.length === 0) {
-                const emptyRow = document.createElement('tr');
-                emptyRow.innerHTML = '<td colspan="9" class="px-4 py-8 text-center text-neutral">没有数据</td>';
-                dataTableBody.appendChild(emptyRow);
+                dataTableBody.innerHTML = '<tr class="px-4 py-8 text-center text-neutral"><td colspan="9">没有数据</td></tr>';
                 return;
             }
             
-            const growthRateUnit = dataInterval === "yearly" ? "每年" : "每月";
-            
+            // 表格中已移除估值和增长率等敏感列
             currentData.forEach(item => {
                 const row = document.createElement('tr');
                 row.className = 'hover:bg-gray-50 transition-custom';
-                
-                // 格式化增长率
-                let growthRateHtml = '-';
-                if (item.growthRate !== null) {
-                    const ratePercent = (item.growthRate * 100).toFixed(2);
-                    // 根据增长率正负添加颜色
-                    const rateClass = item.growthRate >= 0 ? 'text-green-600' : 'text-red-600';
-                    growthRateHtml = `<span class="${rateClass}">${ratePercent}% ${growthRateUnit}</span>`;
-                }
-                
-                // 格式化波普尔指标X
-                let popperHtml = '-';
-                if (item.popperIndexX !== null) {
-                    popperHtml = item.popperIndexX.toFixed(4);
-                }
-                
+                let popperHtml = item.popperIndexX !== null ? item.popperIndexX.toFixed(4) : '-';
                 row.innerHTML = `
                     <td class="px-4 py-3 whitespace-nowrap">${item.date}</td>
                     <td class="px-4 py-3 whitespace-nowrap">${item.price.toFixed(2)}</td>
-                    <td class="px-4 py-3 whitespace-nowrap">${item.estimatePrice.toFixed(2)}</td>
-                    <td class="px-4 py-3 whitespace-nowrap">${item.movingAverage ? item.movingAverage.toFixed(2) : '-'}</td>
                     <td class="px-4 py-3 whitespace-nowrap">${item.arh999Index ? item.arh999Index.toFixed(4) : '-'}</td>
-                    <td class="px-4 py-3 whitespace-nowrap">${growthRateHtml}</td>
                     <td class="px-4 py-3 whitespace-nowrap">${popperHtml}</td>
-                    <td class="px-4 py-3 whitespace-nowrap">
-                        <span class="px-2 py-1 text-xs rounded-full ${item.arh999Status.class}">${item.arh999Status.text}</span>
-                    </td>
-                    <td class="px-4 py-3 whitespace-nowrap">
-                        <span class="px-2 py-1 text-xs rounded-full ${item.popperStatus.class}">${item.popperStatus.text}</span>
-                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap"><span class="px-2 py-1 text-xs rounded-full ${item.arh999Status.class}">${item.arh999Status.text}</span></td>
+                    <td class="px-4 py-3 whitespace-nowrap"><span class="px-2 py-1 text-xs rounded-full ${item.popperStatus.class}">${item.popperStatus.text}</span></td>
                 `;
-                
                 dataTableBody.appendChild(row);
             });
-            
-            // 更新显示计数
             showingCount.textContent = filteredData.length;
         }
         
-        // 更新分页控件
         function updatePagination(totalPages) {
             prevPageBtn.disabled = currentPage === 1;
             nextPageBtn.disabled = currentPage === totalPages || totalPages === 0;
             pageInfo.textContent = `第 ${currentPage} 页 / 共 ${totalPages} 页`;
         }
         
-        // 上一页
-        function goToPrevPage() {
-            if (currentPage > 1) {
-                currentPage--;
-                renderTable();
-            }
-        }
+        function goToPrevPage() { if (currentPage > 1) { currentPage--; renderTable(); } }
+        function goToNextPage() { const totalPages = Math.ceil(filteredData.length / pageSize); if (currentPage < totalPages) { currentPage++; renderTable(); } }
         
-        // 下一页
-        function goToNextPage() {
-            const totalPages = Math.ceil(filteredData.length / pageSize);
-            if (currentPage < totalPages) {
-                currentPage++;
-                renderTable();
-            }
-        }
-        
-        // 导出数据
         function exportData() {
-            if (allData.length === 0) {
-                showNotification('warning', '没有数据可导出');
-                return;
-            }
-            
+            if (allData.length === 0) { showNotification('warning', '没有数据可导出'); return; }
             const growthRateUnit = dataInterval === "yearly" ? "每年" : "每月";
-            
-            // 准备CSV内容
-            let csvContent = `日期,价格,指数拟合估值,平均价,ARH999指数,拟合增长率(${growthRateUnit}),波普尔指标X,ARH999状态,波普尔状态\n`;
-            
+            // 导出数据中已移除敏感计算列
+            let csvContent = `日期,价格,索罗斯指数,波普尔指标X,索罗斯指数状态,波普尔状态\n`;
             allData.forEach(item => {
-                csvContent += `${item.date},`;
-                csvContent += `${item.price.toFixed(2)},`;
-                csvContent += `${item.estimatePrice.toFixed(2)},`;
-                csvContent += `${item.movingAverage ? item.movingAverage.toFixed(2) : ''},`;
-                csvContent += `${item.arh999Index ? item.arh999Index.toFixed(4) : ''},`;
-                csvContent += `${item.growthRate !== null ? (item.growthRate * 100).toFixed(2) + '%' : ''},`;
-                csvContent += `${item.popperIndexX !== null ? item.popperIndexX.toFixed(4) : ''},`;
-                csvContent += `${item.arh999Status.text},`;
-                csvContent += `${item.popperStatus.text}\n`;
+                csvContent += `${item.date},${item.price.toFixed(2)},${item.arh999Index ? item.arh999Index.toFixed(4) : ''},${item.popperIndexX !== null ? item.popperIndexX.toFixed(4) : ''},${item.arh999Status.text},${item.popperStatus.text}\n`;
             });
-            
-            // 添加指数拟合参数作为最后一行
-            if (exponentialParams.a !== null && exponentialParams.b !== null) {
-                csvContent += `,,指数拟合参数: a=${exponentialParams.a.toFixed(4)},b=${exponentialParams.b.toFixed(4)},,,,,\n`;
-            }
-            
-            // 创建下载链接
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.setAttribute('href', url);
-            link.setAttribute('download', `arh999_v13_exponential_data_${new Date().toISOString().slice(0,10)}.csv`);
+            link.setAttribute('download', `soros_index_v13_data_${new Date().toISOString().slice(0,10)}.csv`);
             link.style.visibility = 'hidden';
-            
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            
             showNotification('success', '数据导出成功');
         }
         
-        // 更新图表
         function updateChart() {
-            if (allData.length === 0) {
-                showNotification('warning', '请先加载数据');
-                return;
-            }
-            
+            if (allData.length === 0) { showNotification('warning', '请先加载数据'); return; }
             showLoader();
             setTimeout(() => {
                 try {
-                    // 重新处理数据以更新状态
-                    const reprocessedData = processData(
-                        allData.map(item => item.date),
-                        allData.map(item => item.price)
-                    );
+                    const reprocessedData = processData(allData.map(item => item.date), allData.map(item => item.price));
                     allData = reprocessedData;
-                    
-                    // 应用新的参考线设置
                     filterDataByDateRange();
                     calculateIndexMinMax();
                     calculateReferenceLines();
-                    
-                    // 更新所有相关显示
                     renderChart();
                     renderTable();
                     updateReferenceLineDisplays();
                     updateDataInfo();
-                    
-                    showNotification('success', '图表已更新，指数拟合模型已应用');
+                    showNotification('success', '图表已更新，智能算法已应用');
                 } catch (error) {
                     showNotification('error', `更新失败: ${error.message}`);
                 } finally {
@@ -1739,68 +1493,35 @@
             }, 500);
         }
         
-        // 显示加载器
-        function showLoader() {
-            chartLoader.classList.remove('hidden');
-        }
+        function showLoader() { chartLoader.classList.remove('hidden'); }
+        function hideLoader() { chartLoader.classList.add('hidden'); }
         
-        // 隐藏加载器
-        function hideLoader() {
-            chartLoader.classList.add('hidden');
-        }
-        
-        // 显示通知
         function showNotification(type, message) {
             const notification = document.getElementById('notification');
             const icon = document.getElementById('notificationIcon');
             const text = document.getElementById('notificationText');
-            
-            // 设置样式和图标
-            notification.className = 'fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg transform translate-y-0 opacity-100 transition-all duration-300 flex items-center';
-            
-            if (type === 'success') {
-                notification.classList.add('bg-green-50', 'text-green-700', 'border', 'border-green-200');
-                icon.className = 'fa fa-check-circle mr-2';
-            } else if (type === 'error') {
-                notification.classList.add('bg-red-50', 'text-red-700', 'border', 'border-red-200');
-                icon.className = 'fa fa-exclamation-circle mr-2';
-            } else if (type === 'warning') {
-                notification.classList.add('bg-yellow-50', 'text-yellow-700', 'border', 'border-yellow-200');
-                icon.className = 'fa fa-exclamation-triangle mr-2';
-            }
-            
-            // 设置文本
+            notification.className = 'fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg transform translate-y-0 opacity-100 transition-all duration-300 flex items-center z-50';
+            if (type === 'success') { notification.classList.add('bg-green-50', 'text-green-700', 'border', 'border-green-200'); icon.className = 'fa fa-check-circle mr-2'; }
+            else if (type === 'error') { notification.classList.add('bg-red-50', 'text-red-700', 'border', 'border-red-200'); icon.className = 'fa fa-exclamation-circle mr-2'; }
+            else if (type === 'warning') { notification.classList.add('bg-yellow-50', 'text-yellow-700', 'border', 'border-yellow-200'); icon.className = 'fa fa-exclamation-triangle mr-2'; }
             text.textContent = message;
-            
-            // 自动隐藏
-            setTimeout(() => {
-                notification.classList.add('translate-y-20', 'opacity-0');
-            }, 3000);
+            setTimeout(() => { notification.classList.add('translate-y-20', 'opacity-0'); }, 3000);
         }
         
-        // 切换主题
         function toggleTheme() {
             const icon = themeToggle.querySelector('i');
             document.body.classList.toggle('dark-mode');
-            
             if (document.body.classList.contains('dark-mode')) {
-                icon.classList.remove('fa-moon-o');
-                icon.classList.add('fa-sun-o');
+                icon.classList.remove('fa-moon-o'); icon.classList.add('fa-sun-o');
                 document.body.classList.add('bg-gray-900', 'text-white');
                 document.body.classList.remove('bg-gray-50', 'text-dark');
             } else {
-                icon.classList.remove('fa-sun-o');
-                icon.classList.add('fa-moon-o');
+                icon.classList.remove('fa-sun-o'); icon.classList.add('fa-moon-o');
                 document.body.classList.remove('bg-gray-900', 'text-white');
                 document.body.classList.add('bg-gray-50', 'text-dark');
             }
-            
-            // 如果图表已存在，重新渲染以适应主题
-            if (chart) {
-                renderChart();
-            }
+            if (chart) renderChart();
         }
     </script>
 </body>
-</html>
-    
+    </html>
